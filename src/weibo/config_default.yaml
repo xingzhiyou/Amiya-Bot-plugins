@@ -1,5 +1,6 @@
 setting:
     sendGIF: false
+    sendHistorical: true
     imagesCache: logs/weibo
     autoImageGrid: false
     cacheRetentionDays: 7

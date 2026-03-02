@@ -39,7 +39,7 @@ class WeiboPluginInstance(AmiyaBotPluginInstance): ...
 
 bot = WeiboPluginInstance(
     name='明日方舟微博推送',
-    version='4.1',
+    version='4.2',
     plugin_id='amiyabot-weibo',
     plugin_type='official',
     description='在明日方舟相关官微更新时自动推送到群',
@@ -216,12 +216,14 @@ async def handle_weibo(data: dict):
     recent_weibos: dict = data.get('recent_weibos') or {}
     if not recent_weibos:
         return
+    
+    is_historical = not data.__contains__('task_id')  # 如果没有task_id，说明是订阅建立时的历史微博
 
     # 创建异步任务来处理微博数据，不等待处理完成
-    asyncio.create_task(process_weibo_data(recent_weibos))
+    asyncio.create_task(process_weibo_data(recent_weibos, is_historical))
 
 
-async def process_weibo_data(recent_weibos: dict):
+async def process_weibo_data(recent_weibos: dict, is_historical=False):
     """异步处理微博数据的函数，避免阻塞websocket"""
     try:
         # 查询开启微博推送的群（后面可能需要推送新增的历史微博）
@@ -233,6 +235,7 @@ async def process_weibo_data(recent_weibos: dict):
         push_async = bot.get_config('sendAsync')
         send_interval = bot.get_config('sendInterval')
         block_rules = bot.get_config('block') or []
+        send_historical = setting.get('sendHistorical', True)
 
         inserted_records = []  # 保存本次新增的微博（结构：dict）
         for uid, items in recent_weibos.items():
@@ -295,6 +298,9 @@ async def process_weibo_data(recent_weibos: dict):
 
         if not target_groups:
             return  # 没有需要推送的群
+        
+        if not send_historical and is_historical:
+            return  # 不推送历史微博，且当前处理的是历史微博
 
         # 推送新增的历史微博（简单文本+详情+图片文件名列表）
         async_tasks = []

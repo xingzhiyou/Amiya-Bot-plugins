@@ -13,6 +13,12 @@
                     "type": "boolean",
                     "default": false
                 },
+                "sendHistorical": {
+                    "title": "是否推送历史微博",
+                    "description": "插件建立链接时是否推送最近的历史微博",
+                    "type": "boolean",
+                    "default": true
+                },
                 "imagesCache": {
                     "title": "图片缓存目录",
                     "description": "微博图片缓存的目录，可以为绝对路径",
