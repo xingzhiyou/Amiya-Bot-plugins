@@ -1,0 +1,32 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "required": [],
+    "properties": {
+        "ranges": {
+            "title": "运势等级范围",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "min": {
+                        "title": "最小值",
+                        "type": "integer"
+                    },
+                    "max": {
+                        "title": "最大值",
+                        "type": "integer"
+                    },
+                    "level": {
+                        "title": "等级名称",
+                        "type": "string"
+                    },
+                    "description": {
+                        "title": "等级描述",
+                        "type": "string"
+                    }
+                }
+            }
+        }
+    }
+}
