@@ -9,6 +9,29 @@ weekly_tasks = 500
 weekly_battle = 1800
 
 
+def get_extra_card_period(year: int) -> tuple:
+    """获取每年五一前最后一个周六开始的额外月卡期间（30天）"""
+    may_first = time.strptime(f'{year}-05-01', '%Y-%m-%d')
+    may_first_ts = int(time.mktime(may_first))
+    may_first_weekday = time.localtime(may_first_ts).tm_wday
+    
+    # 计算5月1日前的最后一个周六
+    days_to_saturday = (may_first_weekday - 5 + 7) % 7 or 7
+    saturday_ts = may_first_ts - (days_to_saturday * 86400)
+    
+    return int(saturday_ts), int(saturday_ts) + (30 * 86400)
+
+
+def is_in_extra_card_period(timestamp: float) -> bool:
+    """检查给定时间戳是否在额外月卡期间内"""
+    year = time.localtime(timestamp).tm_year
+    for y in range(year - 1, year + 2):  # 检查前后一年
+        start, end = get_extra_card_period(y)
+        if start <= timestamp < end:
+            return True
+    return False
+
+
 async def calc_jade(reply: Chain, text: str):
     try:
         time_array = extract_time(text)
@@ -42,14 +65,18 @@ def calc_result(end_date: float):
     dates = calc_date(end_date)
     end_date_str = stamp_to_date(end_date)
 
-    types = {'s': 0, 'd': 0, 't': 0, 'b': 0}
+    types = {'s': 0, 'd': 0, 't': 0, 'b': 0, 'extra': 0}
 
     for item in dates:
+        date_stamp = date_to_stamp(item['dateStr'])
         types['s'] += sign_in
         types['d'] += daily_tasks
         if item['weekDate'] == 0:
             types['t'] += weekly_tasks
             types['b'] += weekly_battle
+        # 检查是否在额外月卡期间
+        if is_in_extra_card_period(date_stamp):
+            types['extra'] += sign_in
 
     jade = 0
     for i in types:
@@ -61,6 +88,8 @@ def calc_result(end_date: float):
     result += '- 每日任务共计：%d\n' % types['d']
     result += '- 每周任务共计：%d\n' % types['t']
     result += '- 剿灭行动共计：%d\n' % types['b']
+    if types['extra'] > 0:
+        result += '- 周年月卡共计：%d\n' % types['extra']
 
     result += '\n博士，要好好规划罗德岛的资源使用哦～'
 
