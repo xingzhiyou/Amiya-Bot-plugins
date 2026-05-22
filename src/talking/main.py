@@ -13,10 +13,14 @@ _url_cache: dict[str, tuple[str, str | None]] = {}
 _cache_timeout = 300  # 5 minutes cache
 
 
-def _is_image_by_content(data: bytes) -> bool:
-    """Detect if content is an image by magic bytes."""
+def _is_image_by_content(data: bytes) -> tuple[bool, str]:
+    """Detect if content is an image by magic bytes.
+    
+    Returns:
+        tuple: (is_image, extension)
+    """
     if len(data) < 4:
-        return False
+        return False, ''
     # PNG, JPEG, GIF, WebP magic bytes
     signatures = [
         (b'\x89PNG\r\n\x1a\n', '.png'),
@@ -24,11 +28,12 @@ def _is_image_by_content(data: bytes) -> bool:
         (b'GIF87a', '.gif'),
         (b'GIF89a', '.gif'),
         (b'RIFF', '.webp'),  # WebP starts with RIFF....WEBP
+        (b'BM', '.bmp'),     # BMP
     ]
-    for sig, _ in signatures:
+    for sig, ext in signatures:
         if data.startswith(sig):
-            return True
-    return False
+            return True, ext
+    return False, ''
 
 
 def _is_image_by_url(url: str) -> tuple[bool, str]:
@@ -45,56 +50,36 @@ async def fetch_url_content(url: str) -> tuple[str, str | None]:
     """Fetch content from a URL with intelligent detection.
     
     Returns:
-        tuple: (text content, image URL/path if it's an image, else None)
+        tuple: (text content, image path if it's an image, else None)
     """
-    import time
-    
     # Check cache
     if url in _url_cache:
-        cached_text, cached_img = _url_cache[url]
-        return cached_text, cached_img
+        return _url_cache[url]
+    
+    cache_path = f'/tmp/url_content_{abs(hash(url))}'
     
     try:
+        # Always download and save content first
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            async with session.get(
+                url,
+                timeout=aiohttp.ClientTimeout(total=10),
+                ssl=False  # Skip SSL verification for self-signed certificates
+            ) as response:
                 if response.status == 200:
-                    content_type = response.headers.get('Content-Type', '')
                     data = await response.read()
                     
-                    is_image = False
-                    ext = ''
+                    # Save raw content
+                    with open(cache_path, 'wb') as f:
+                        f.write(data)
                     
-                    # Check by Content-Type header
-                    if 'image' in content_type:
-                        is_image = True
-                        if 'png' in content_type:
-                            ext = '.png'
-                        elif 'gif' in content_type:
-                            ext = '.gif'
-                        elif 'webp' in content_type:
-                            ext = '.webp'
-                        else:
-                            ext = '.jpg'
-                    
-                    # Check by URL extension
-                    if not is_image:
-                        is_image, ext = _is_image_by_url(url)
-                    
-                    # Check by content magic bytes
-                    if not is_image:
-                        is_image, ext = _is_image_by_content(data), ext or '.jpg'
+                    # Then check if it's an image by content
+                    is_image, ext = _is_image_by_content(data)
                     
                     if is_image:
-                        # Prefer returning URL directly if server supports it
-                        if 'image' in content_type or _is_image_by_url(url)[0]:
-                            _url_cache[url] = ('', url)
-                            return '', url
-                        
-                        # Save to temp file
-                        img_path = f'/tmp/url_image_{abs(hash(url))}{ext}'
-                        if not os.path.exists(img_path):
-                            with open(img_path, 'wb') as f:
-                                f.write(data)
+                        # Rename to proper extension
+                        img_path = f'{cache_path}{ext}'
+                        os.rename(cache_path, img_path)
                         _url_cache[url] = ('', img_path)
                         return '', img_path
                     
@@ -103,8 +88,8 @@ async def fetch_url_content(url: str) -> tuple[str, str | None]:
                     _url_cache[url] = (text, None)
                     return text, None
                     
-    except Exception:
-        pass
+    except Exception as e:
+        print(f'[TalkingPlugin] Fetch URL error: {url}, error: {e}')
     
     _url_cache[url] = ('', None)
     return '', None
