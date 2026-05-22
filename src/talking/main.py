@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import aiohttp
 
 from amiyabot import Message, Chain
@@ -8,9 +9,27 @@ from core import AmiyaBotPluginInstance
 curr_dir = os.path.dirname(__file__)
 
 
-# Image URL cache: url -> (text, image_url_or_path)
-_url_cache: dict[str, tuple[str, str | None]] = {}
+# Image URL cache: url -> (text, image_url_or_path, timestamp)
+_url_cache: dict[str, tuple[str, str | None, float]] = {}
 _cache_timeout = 300  # 5 minutes cache
+
+
+def _get_cached(url: str) -> tuple[str, str | None] | None:
+    """Get cached content if not expired."""
+    if url in _url_cache:
+        text, img, timestamp = _url_cache[url]
+        if time.time() - timestamp < _cache_timeout:
+            return text, img
+        else:
+            # Remove expired cache
+            del _url_cache[url]
+            # Clean up temp file
+            if img and os.path.exists(img) and img.startswith('/tmp/'):
+                try:
+                    os.remove(img)
+                except Exception:
+                    pass
+    return None
 
 
 def _is_image_by_content(data: bytes) -> tuple[bool, str]:
@@ -52,9 +71,10 @@ async def fetch_url_content(url: str) -> tuple[str, str | None]:
     Returns:
         tuple: (text content, image path if it's an image, else None)
     """
-    # Check cache
-    if url in _url_cache:
-        return _url_cache[url]
+    # Check cache with expiration
+    cached = _get_cached(url)
+    if cached:
+        return cached
     
     cache_path = f'/tmp/url_content_{abs(hash(url))}'
     
@@ -80,18 +100,18 @@ async def fetch_url_content(url: str) -> tuple[str, str | None]:
                         # Rename to proper extension
                         img_path = f'{cache_path}{ext}'
                         os.rename(cache_path, img_path)
-                        _url_cache[url] = ('', img_path)
+                        _url_cache[url] = ('', img_path, time.time())
                         return '', img_path
                     
                     # Return text content
                     text = data.decode('utf-8', errors='ignore')
-                    _url_cache[url] = (text, None)
+                    _url_cache[url] = (text, None, time.time())
                     return text, None
                     
     except Exception as e:
         print(f'[TalkingPlugin] Fetch URL error: {url}, error: {e}')
     
-    _url_cache[url] = ('', None)
+    _url_cache[url] = ('', None, time.time())
     return '', None
 
 
